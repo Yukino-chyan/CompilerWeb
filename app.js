@@ -48,7 +48,8 @@ const App = (() => {
       if (sec) sec.hidden = (l.id !== id);
     });
     // fig meta
-    document.getElementById('fig-meta').textContent = `FIG · ${lab.figNo || '—'}`;
+    const metaEl = document.getElementById('fig-meta');
+    if (metaEl) metaEl.textContent = `FIG · ${lab.figNo || '—'}`;
     // mount once
     if (!lab.initialized) {
       lab.mount(document.getElementById(id + '-root'));
@@ -74,15 +75,6 @@ function mountPlaceholder(title, sub) {
 
 /* DOM 就绪后再构建 UI；各 Lab 模块的 register 在脚本加载时已经完成 */
 window.addEventListener('DOMContentLoaded', () => {
-  // 兜底注册：若用户想跳过某个 Lab 模块，仍能看到导航
-  App.register({
-    id: 'lab4',
-    label: '实验四 · SLR(1) 分析表',
-    figNo: '03',
-    disabled: true,
-    mount: mountPlaceholder('实验四', '尚未开始。')
-  });
-
   App.buildTabs();
   App.buildSections();
   // 默认进入 Lab 3（LR(0)）

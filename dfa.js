@@ -9,12 +9,6 @@ function mountLab2(root) {
     <div class="lab-grid">
       <aside class="pane pane-left">
         <div class="pane-section">
-          <div class="figure-caption">DFA</div>
-          <div class="figure-note">
-            默认载入 PPT 第 4 页的 <code>dfa_in1.dfa</code>。
-          </div>
-        </div>
-        <div class="pane-section">
           <div class="section-title">图例</div>
           <div class="legend">
             <div class="row"><div class="swatch start"></div>
@@ -42,7 +36,6 @@ function mountLab2(root) {
       <main class="pane pane-right">
         <div class="canvas-stage">
           <div class="canvas-corner">
-            <div class="fig-num">图 · 01</div>
             <div class="fig-title">确定性有限自动机 <em>M</em></div>
           </div>
           <div class="canvas-tools">

@@ -12,10 +12,6 @@ function mountLab3(root) {
     <div class="lab-grid">
       <aside class="pane pane-left">
         <div class="pane-section">
-          <div class="figure-caption">LR(0)</div>
-          <div class="figure-note">从文法规则构造增广文法、闭包、Goto 与 LR(0) 项目集规范族。</div>
-        </div>
-        <div class="pane-section">
           <div class="section-title">图例</div>
           <div class="legend">
             <div class="row"><div class="swatch start"></div><div class="label">初始项目集<small>I0</small></div></div>
@@ -43,7 +39,6 @@ function mountLab3(root) {
       <main class="pane pane-right">
         <div class="canvas-stage">
           <div class="canvas-corner">
-            <div class="fig-num">图 · 02</div>
             <div class="fig-title">LR(0) 项目集规范族 <em>C</em></div>
           </div>
           <div class="canvas-tools">
