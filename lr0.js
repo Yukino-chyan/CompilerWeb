@@ -2,9 +2,10 @@
    实验三 — LR(0) 项目集规范族可视化
    提供 mountLab3(root)，由 app.js 在激活时调用。
    样例文件：grammar.txt（与 DEFAULT_GRAMMAR 内容一致）。
-   注：本文件本轮仅做结构拆分，未修复已知 bug
-   （itemSetKey 字典序、parseGrammar 缺校验、posCache 跨文法
-   不失效、accept 节点半径未在边端点中体现、'?' 乱码等）。
+   已修复：itemSetKey 改数值排序（p>=10 不再错位）、parseGrammar 加输入
+   校验、posCache 改按项目集签名 sig 跨文法失效、accept 节点半径在边端点
+   中体现。布局：分层(BFS) + 重心法 + 相邻交换(transpose)降交叉，
+   边标签做去重叠分离，避免两条边的符号压在一起。
    ════════════════════════════════════════════════════════════ */
 function mountLab3(root) {
   root.innerHTML = `
@@ -376,6 +377,9 @@ F -> ( E ) | id`;
       if (u == null || v == null || u === v) return;
       outAdj[u].push(v); inAdj[v].push(u);
     });
+    // 分层用 BFS 最短路径：实测在 LR(0) 状态图上交叉最少（最长路径会把图
+    // 摊得太宽反而交叉更多）。代价是同层会出现层内边（见 tick 里对层内边的
+    // 弧形处理），但全局形态更紧凑。
     const layer = new Array(N).fill(-1);
     const root = idx.get('I0') ?? 0;
     layer[root] = 0;
@@ -411,6 +415,49 @@ F -> ( E ) | id`;
       if (!ns.length) return pos[node];
       let s = 0; ns.forEach(v => s += pos[v]);
       return s / ns.length;
+    }
+
+    // 相邻交换 (transpose)：在重心排序之上，反复试着交换同层相邻节点，
+    // 只要能减少与上下相邻层之间的边交叉就保留，把残余交叉进一步磨平。
+    // 重心法擅长大方向排序但留得下局部交叉，transpose 正好补这一刀。
+    const edgesL = [];
+    data.transitions.forEach(t => {
+      const u = idx.get(t.from), v = idx.get(t.to);
+      if (u == null || v == null || u === v) return;
+      edgesL.push({ u, v, lu: layer[u], lv: layer[v] });
+    });
+    function channelCrossings(la) {
+      const lb = la + 1;
+      const es = [];
+      edgesL.forEach(e => {
+        if (e.lu === la && e.lv === lb) es.push([pos[e.u], pos[e.v]]);
+        else if (e.lu === lb && e.lv === la) es.push([pos[e.v], pos[e.u]]);
+      });
+      let c = 0;
+      for (let i = 0; i < es.length; i++)
+        for (let j = i + 1; j < es.length; j++)
+          if ((es[i][0] - es[j][0]) * (es[i][1] - es[j][1]) < 0) c++;
+      return c;
+    }
+    const localCrossings = (l) => (l > 0 ? channelCrossings(l - 1) : 0) + channelCrossings(l);
+    const syncPos = (l) => byLayer[l].forEach((n, i) => pos[n] = i);
+    let improved = true, guard = 0;
+    while (improved && guard++ < 12) {
+      improved = false;
+      for (let l = 0; l <= maxL; l++) {
+        const arr = byLayer[l];
+        for (let i = 0; i + 1 < arr.length; i++) {
+          const before = localCrossings(l);
+          [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+          syncPos(l);
+          if (localCrossings(l) < before) {
+            improved = true;
+          } else {
+            [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+            syncPos(l);
+          }
+        }
+      }
     }
 
     // 坐标：横向分层 (X by layer)，纵向居中铺开
@@ -489,7 +536,41 @@ F -> ( E ) | id`;
     showDetail(fallback);
   }
 
+  // 边标签去重叠：每个标签以自己的"锚点"（边中点）为弹簧目标，对互相重叠的
+  // 标签沿穿透最浅的轴推开，反复几轮收敛。这样标签既不会离自己的边太远，
+  // 又不会两两压字。位置每帧都从锚点重算，故是确定性的、不会逐帧漂移累积。
+  function separateLabels(items) {
+    const PAD = 3;
+    for (let iter = 0; iter < 60; iter++) {
+      items.forEach(a => {
+        a.lx += (a.ax - a.lx) * 0.10;
+        a.ly += (a.ay - a.ly) * 0.10;
+      });
+      let moved = false;
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const a = items[i], b = items[j];
+          const dx = b.lx - a.lx, dy = b.ly - a.ly;
+          const ox = (a.hw + b.hw + PAD) - Math.abs(dx);
+          const oy = (a.hh + b.hh + PAD) - Math.abs(dy);
+          if (ox > 0 && oy > 0) {
+            moved = true;
+            if (ox < oy) {
+              const s = ((dx >= 0 ? 1 : -1) * ox) / 2;
+              a.lx -= s; b.lx += s;
+            } else {
+              const s = ((dy >= 0 ? 1 : -1) * oy) / 2;
+              a.ly -= s; b.ly += s;
+            }
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
+
   function tick() {
+    const labels = [];
     edgeSel.each(function(d) {
       const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
       // accept / 普通节点半径不同，箭头端点需要据此偏移，否则会戳进双圆里
@@ -499,6 +580,16 @@ F -> ( E ) | id`;
       if (d.selfLoop) {
         pathD = `M ${tx - 10} ${ty - rt} C ${tx - 42} ${ty - rt - 50}, ${tx + 42} ${ty - rt - 50}, ${tx + 10} ${ty - rt}`;
         labelX = tx; labelY = ty - rt - 38;
+      } else if (Math.abs(tx - sx) < 8) {
+        // 层内边（同层节点 x 相同）：原本会画成一条竖线，多条就叠在一起。
+        // 改画成统一凸向左侧的弧，凸出量随纵向跨度增大，让多条层内边像
+        // 同心弧一样嵌套开来，不再彼此重合。
+        const dy = ty - sy;
+        const bow = 26 + 0.22 * Math.abs(dy);
+        const cx = (sx + tx) / 2 - bow;
+        const cy = (sy + ty) / 2;
+        pathD = `M ${sx - rs} ${sy} Q ${cx} ${cy} ${tx - rt} ${ty}`;
+        labelX = (sx + tx) / 2 - bow / 2; labelY = cy;
       } else {
         const dx = tx - sx, dy = ty - sy, dist = Math.hypot(dx, dy) || 1;
         const ux = dx/dist, uy = dy/dist;
@@ -509,9 +600,17 @@ F -> ( E ) | id`;
       const grp = d3.select(this);
       grp.select('path.edge').attr('d', pathD);
       grp.select('path.edge-hit').attr('d', pathD);
-      const lbl = grp.select('text.edge-label').attr('x', labelX).attr('y', labelY);
+      const lbl = grp.select('text.edge-label').text(d.label);
       const bbox = lbl.node().getBBox();
-      grp.select('ellipse.edge-label-bg').attr('cx', labelX).attr('cy', labelY).attr('rx', bbox.width/2 + 6).attr('ry', bbox.height/2 + 2);
+      // 锚点 ax/ay 固定在边中点，lx/ly 是去重叠后实际落点
+      labels.push({ grp, ax: labelX, ay: labelY, lx: labelX, ly: labelY,
+                    hw: bbox.width / 2 + 6, hh: bbox.height / 2 + 2 });
+    });
+    separateLabels(labels);
+    labels.forEach(L => {
+      L.grp.select('text.edge-label').attr('x', L.lx).attr('y', L.ly);
+      L.grp.select('ellipse.edge-label-bg')
+        .attr('cx', L.lx).attr('cy', L.ly).attr('rx', L.hw).attr('ry', L.hh);
     });
     nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
     nodes.forEach(n => posCache.set(n.sig, { x:n.x, y:n.y, fx:n.fx, fy:n.fy }));
